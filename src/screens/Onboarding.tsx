@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Coins, Feather, Flame, Sheet, Shield, Snowflake, Sparkles, Zap } from 'lucide-react'
 import { ConnectForm } from '../components/SyncSection'
+import { envSyncConfig, testConnection } from '../lib/sync'
 import { useState } from 'react'
 import { todayISO } from '../core/dates'
 import { PACKS, fromTemplate, templateByKey } from '../core/library'
@@ -158,6 +159,38 @@ export function Onboarding() {
 /** En un dispositivo nuevo: conectar la hoja de Google y traer todo el historial. */
 function RestoreFromSheets() {
   const [open, setOpen] = useState(false)
+  const env = envSyncConfig()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // con .env.local configurado basta un toque
+  if (env) {
+    const restore = async () => {
+      setBusy(true)
+      setError(null)
+      try {
+        const info = await testConnection(env)
+        if (!info.habits) {
+          setError('La hoja aún no tiene hábitos. Empieza aquí y se guardarán en ella.')
+          return
+        }
+        useStore.setState({ sync: env, onboarded: true, userName: info.userName || 'Campeón' })
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'No se pudo conectar')
+      } finally {
+        setBusy(false)
+      }
+    }
+    return (
+      <div className="mt-6">
+        <button onClick={restore} disabled={busy} className="flex items-center gap-2 text-sm font-semibold text-teal hover:underline disabled:opacity-50">
+          <Sheet className="size-4" /> {busy ? 'Conectando…' : 'Recuperar mis datos de Google Sheets'}
+        </button>
+        {error && <p className="mt-2 text-xs text-muted">{error}</p>}
+      </div>
+    )
+  }
+
   return (
     <div className="mt-6">
       <button onClick={() => setOpen((o) => !o)} className="flex items-center gap-2 text-sm font-semibold text-muted hover:text-white">

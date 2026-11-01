@@ -3,7 +3,7 @@ import { es } from 'date-fns/locale'
 import { CircleAlert, CloudCheck, CloudOff, LoaderCircle, RefreshCw, Sheet, Unplug } from 'lucide-react'
 import { useState } from 'react'
 import { useStore } from '../lib/store'
-import { syncNow, testConnection, useSyncStatus } from '../lib/sync'
+import { envSyncConfig, setSyncDisabled, syncNow, testConnection, useSyncStatus } from '../lib/sync'
 
 /** Formulario de conexión (también se usa en el onboarding para recuperar datos). */
 export function ConnectForm({ onConnected, cta = 'Conectar' }: { onConnected: (info: { habits: number; marks: number; userName?: string }) => void; cta?: string }) {
@@ -24,6 +24,7 @@ export function ConnectForm({ onConnected, cta = 'Conectar' }: { onConnected: (i
     setError(null)
     try {
       const info = await testConnection(cfg)
+      setSyncDisabled(false)
       setSync(cfg)
       onConnected(info)
     } catch (err) {
@@ -93,7 +94,7 @@ export function SyncSection() {
           <CloudCheck className="size-5 shrink-0 text-green" />
         )}
         <div className="min-w-0">
-          <div className="font-semibold">Google Sheets conectado</div>
+          <div className="font-semibold">Google Sheets conectado{envSyncConfig()?.url === sync.url ? ' (desde .env)' : ''}</div>
           <div className="truncate text-xs text-muted">
             {status.state === 'syncing' ? 'Sincronizando…' : status.state === 'error' ? status.error : `Última sincronización: ${last}`}
           </div>
@@ -104,7 +105,11 @@ export function SyncSection() {
           <RefreshCw className="size-4" /> Sincronizar
         </button>
         <button
-          onClick={() => confirm('¿Desconectar de Google Sheets? Tus datos se quedan en este dispositivo y en la hoja.') && setSync(null)}
+          onClick={() => {
+            if (!confirm('¿Desconectar de Google Sheets? Tus datos se quedan en este dispositivo y en la hoja.')) return
+            setSyncDisabled(true)
+            setSync(null)
+          }}
           className="flex items-center justify-center gap-1.5 rounded-xl border border-line py-2 text-sm font-semibold text-muted hover:text-coral"
         >
           <Unplug className="size-4" /> Desconectar

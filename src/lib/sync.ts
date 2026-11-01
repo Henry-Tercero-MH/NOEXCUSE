@@ -133,6 +133,43 @@ async function request(cfg: SyncConfig, body?: object): Promise<Remote> {
 }
 
 /** Prueba la conexión y devuelve un resumen de lo que hay en la hoja. */
+// ---------------------------------------------------------------- variables de entorno
+
+const OFF_KEY = 'ne-sync-off' // el usuario desconectó a mano: no volver a conectar solo
+
+/** Conexión definida en .env.local (VITE_SYNC_URL / VITE_SYNC_TOKEN), si existe. */
+export function envSyncConfig(): SyncConfig | null {
+  const url = import.meta.env.VITE_SYNC_URL?.trim()
+  const token = import.meta.env.VITE_SYNC_TOKEN?.trim()
+  return url && token ? { url, token } : null
+}
+
+export function setSyncDisabled(off: boolean) {
+  try {
+    if (off) localStorage.setItem(OFF_KEY, '1')
+    else localStorage.removeItem(OFF_KEY)
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
+function syncDisabled() {
+  try {
+    return localStorage.getItem(OFF_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Al arrancar: si hay variables de entorno y no hay conexión guardada, conecta solo. */
+function applyEnvSync() {
+  const env = envSyncConfig()
+  const { sync, setSync } = useStore.getState()
+  if (!env || syncDisabled()) return
+  // si cambió la URL o el token en .env.local, se usa el nuevo (y se resincroniza todo)
+  if (!sync || sync.url !== env.url || sync.token !== env.token) setSync(env)
+}
+
 export async function testConnection(cfg: SyncConfig) {
   const data = await request(cfg)
   const profile = Object.fromEntries(data.Perfil.map((r) => [str(r.Clave), str(r.Valor)]))
@@ -153,7 +190,8 @@ export function syncNow(): Promise<void> {
 async function doSync() {
   const s = useStore.getState()
   const cfg = s.sync
-  if (!cfg) return
+  // antes de terminar el onboarding no se mezcla nada (evita duplicar hábitos al empezar)
+  if (!cfg || !s.onboarded) return
   const since = cfg.lastSync ?? ''
   const started = stamp()
   useSyncStatus.setState({ state: 'syncing', error: undefined })
@@ -258,6 +296,7 @@ let started = false
 export function startAutoSync() {
   if (started) return
   started = true
+  applyEnvSync()
   let timer: number | undefined
   const schedule = (ms: number) => {
     window.clearTimeout(timer)
@@ -270,7 +309,7 @@ export function startAutoSync() {
     if (st.habits !== prev.habits || st.completions !== prev.completions || st.tombstones !== prev.tombstones || st.purchases !== prev.purchases || st.chestsOpened !== prev.chestsOpened) {
       schedule(2500)
     }
-    if (st.sync && !prev.sync) schedule(0) // recién conectado
+    if ((st.sync && !prev.sync) || (st.onboarded && !prev.onboarded)) schedule(0) // recién conectado o recién empezado
   })
   window.addEventListener('focus', () => schedule(300))
   window.addEventListener('online', () => schedule(300))
